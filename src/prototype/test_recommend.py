@@ -17,10 +17,14 @@ def main():
 
     ROOT_DIR = Path(__file__).resolve().parents[2]
     DATA_DIR = ROOT_DIR / "datasets" / "ml-1m"
+    MODEL_PATH = ROOT_DIR / "models" / "cf_model.pt"
     movie_id_to_title = load_movie_titles(DATA_DIR)
     ratings_df =  load_movielens_ratings(DATA_DIR)
     dataset = MovieLensDataset(ratings_df)
     model = CollaborativeFilteringModel(num_users=len(dataset.user2idx),num_movies=len(dataset.movie2idx),embed_dim=32).to(device)
+    model.load_state_dict(torch.load(MODEL_PATH,map_location=device))
+    print("Loaded trained model")
+    model.eval()
 
     print("Recommendations for user 1")
     rec_ids = recommend_topn(model, dataset,user_id=1,n=10,device=device)

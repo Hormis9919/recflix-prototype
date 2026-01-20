@@ -17,3 +17,6 @@ Thumbs.db
 
 #models
 models/
+
+#metadata
+src/prototype/token_rules.txt
