@@ -43,7 +43,6 @@ def evaluate():
     mae_loss = nn.L1Loss(reduction="sum")
 
     total_mse = 0
-    total_mae = 0
     total_samples = 0
 
     with torch.no_grad():
@@ -55,14 +54,10 @@ def evaluate():
             preds = model(user_idx, movie_idx)
 
             total_mse += mse_loss(preds, rating).item()
-            total_mae += mae_loss(preds, rating).item()
             total_samples += len(rating)
 
     rmse = math.sqrt(total_mse / total_samples)
-    mae = total_mae / total_samples
 
-    print(f"\nBase Model RMSE: {rmse:.4f}")
-    print(f"Base Model MAE: {mae:.4f}")
 
 
 if __name__ == "__main__":
