@@ -7,6 +7,7 @@ import math
 from src.base_model.dataset import MovieLensDataset, load_movielens_ratings
 from src.base_model.model import CollaborativeFilteringModel
 from src.common_files.utils import get_device
+from src.base_model.evaluation import rmse, hit_ratio_at_k, ndcg_at_k
 
 
 def load_model(model_path, device):
@@ -40,7 +41,6 @@ def evaluate():
     model = load_model(model_path, device)
 
     mse_loss = nn.MSELoss(reduction="sum")
-    mae_loss = nn.L1Loss(reduction="sum")
 
     total_mse = 0
     total_samples = 0
@@ -57,7 +57,14 @@ def evaluate():
             total_samples += len(rating)
 
     rmse = math.sqrt(total_mse / total_samples)
+    val_rmse = rmse(all_preds, all_targets)
 
+    hr = hit_ratio_at_k(model, dataset, device, k=10)
+    ndcg = ndcg_at_k(model, dataset, device, k=10)
+
+    print(f"RMSE: {val_rmse:.4f}")
+    print(f"HR@10: {hr:.4f}")
+    print(f"NDCG@10: {ndcg:.4f}")
 
 
 if __name__ == "__main__":
