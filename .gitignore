@@ -1,0 +1,30 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+
+datasets/
+models/
+*.zip
+*.csv
+*.pkl
+*.pt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+
+
+#testing programs
+src/recflix_alpha/test_vocab.py
+src/recflix_alpha/test_dataset.py
+src/recflix_alpha/test_review_encoder.py
+src/recflix_alpha/test_model.py

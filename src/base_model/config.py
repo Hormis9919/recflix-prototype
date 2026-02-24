@@ -1,0 +1,13 @@
+# Model Hyperparameters
+USER_EMBED_DIM = 32
+MOVIE_EMBED_DIM = 32
+TEXT_FEATURE_DIM = 64
+
+#Training Hyperparameters
+BATCH_SIZE = 256
+LEARNING_RATE = 1e-3
+EPOCHS = 5
+
+#Dataset /Text Settings
+MAX_VOCAB_SIZE = 10000
+MAX_REVIEW_LENGTH = 200
