@@ -1,2 +1,2 @@
-This is just a prototype that implements the project on a smaller scale. It only uses the 1M MovieLens database with user, movie and ratings data. 
-The curent driver program is train.py which trains the models(doesn't store) and shows the value of the loss function at each epoch.
+Add datasets and models to the root folder(outside src)
+https://drive.google.com/file/d/1MpgEM-nueLn0GJc8gSNbZUyN2ueKBgzS/view?usp=drive_link
