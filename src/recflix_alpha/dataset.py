@@ -1,3 +1,20 @@
+"""
+Module: recflix_alpha.dataset
+Purpose: Dataset loader and preprocessing for RecFlix Alpha.
+
+This module defines `RecFlixAlphaDataset`, a PyTorch `Dataset` that:
+- Loads Rotten Tomatoes review CSV data.
+- Parses and normalizes review scores (e.g., "3/4" -> 0.75).
+- Filters out invalid rows and encodes review text using the provided
+  `Vocabulary` instance.
+- Builds mappings for critics and movie ids and exposes tensors for
+  critic indices, movie indices, review token tensors and float scores.
+
+Responsibilities:
+- Keep CSV parsing and text encoding isolated from model code.
+- Ensure fixed-length token tensors (padding/truncation) for batching.
+"""
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset

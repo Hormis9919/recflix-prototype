@@ -1,3 +1,20 @@
+"""
+Module: recflix_alpha.model
+Purpose: Neural model definition for RecFlix Alpha.
+
+This file defines `RecFlixAlphaModel`, a small neural recommender that
+combines learned critic and movie embeddings with a text-derived review
+representation (via `ReviewEncoder`) and runs a small MLP to predict a
+normalized score in [0, 1].
+
+Architectural notes:
+- `critic_embedding` and `movie_embedding` map discrete IDs to dense
+  vectors.
+- `ReviewEncoder` converts token sequences to a fixed-size vector using
+  embedding + mean pooling.
+- The three vectors are concatenated and passed through a 2-layer MLP.
+"""
+
 import torch
 import torch.nn as nn
 from src.recflix_alpha.review_encoder import ReviewEncoder

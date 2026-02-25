@@ -1,6 +1,17 @@
+"""
+Module: recflix_alpha.vocab
+Purpose: Simple token vocabulary and text preprocessing utilities.
+
+`Vocabulary` provides minimal functionality to tokenize text, build a
+frequency-thresholded token-to-index mapping, encode text to index
+sequences, and save/load the vocabulary dict to disk. It is intentionally
+lightweight for quick experiments.
+"""
+
 import re
 from collections import Counter
 import torch
+
 
 class Vocabulary:
 	PAD_TOKEN = "<PAD>"

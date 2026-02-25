@@ -1,3 +1,20 @@
+"""
+Module: recflix_alpha.recommend
+Purpose: Produce top-N movie recommendations for a given critic.
+
+This module exposes `recommend_topn(critic_name, n)` which:
+- Loads the model and vocab, builds the dataset.
+- For a requested critic, scores every unique movie using an available
+  review text (first seen review for each movie) and the trained model.
+- Returns the top-N movie titles using the Rotten Tomatoes metadata CSV.
+
+Notes:
+- This is a simple scoring-based recommender (score all candidates and
+  take the top-N) and uses available review text as the textual context
+  for each movie. It assumes the dataset and model artifacts are present
+  in `models/` and movie metadata in `datasets/`.
+"""
+
 import torch
 from pathlib import Path
 import pandas as pd

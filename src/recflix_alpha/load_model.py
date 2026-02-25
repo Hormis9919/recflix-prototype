@@ -1,3 +1,16 @@
+"""
+Module: recflix_alpha.load_model
+Purpose: Convenience loader that reconstructs and returns a trained model.
+
+This module exposes `load_recflix_alpha_model(model_path, device)` which
+loads a PyTorch checkpoint saved by `train.py`, instantiates the
+`RecFlixAlphaModel` with the saved hyperparameters and weights, moves
+it to the requested device, and sets it to evaluation mode.
+
+Responsibilities:
+- Centralize checkpoint deserialization logic and model reconstruction.
+"""
+
 import torch
 from src.recflix_alpha.model import RecFlixAlphaModel
 

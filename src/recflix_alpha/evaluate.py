@@ -1,3 +1,18 @@
+# Module: recflix_alpha.evaluate
+# Purpose: Evaluation utilities for the RecFlix Alpha model.
+#
+# This module provides the `evaluate()` entrypoint that loads a trained
+# RecFlix Alpha model and its vocabulary, runs inference over the
+# Rotten Tomatoes review dataset and computes regression and ranking
+# metrics: RMSE (root mean squared error), Hit Rate@K (HR@K) and
+# Normalized Discounted Cumulative Gain@K (NDCG@K).
+#
+# Responsibilities:
+# - Load model and vocabulary from `models/`.
+# - Build the dataset and DataLoader for batched evaluation.
+# - Compute per-sample RMSE and per-critic ranking metrics.
+# - Print human-readable results to stdout.
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader

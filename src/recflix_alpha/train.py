@@ -1,3 +1,19 @@
+"""
+Module: recflix_alpha.train
+Purpose: Training entrypoint for the RecFlix Alpha model.
+
+This script builds a vocabulary from Rotten Tomatoes review texts,
+constructs the `RecFlixAlphaDataset`, instantiates the model and runs a
+small training loop that minimizes MSE between predicted and parsed
+normalized scores. After training it saves a checkpoint and the
+vocabulary into the `models/` directory.
+
+Notes:
+- Default settings here are for quick tests (small `embed_dim`, few
+  epochs). For serious runs you should increase the data filtering,
+  tune `min_freq`, `embed_dim`, batch size and the optimizer settings.
+"""
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader

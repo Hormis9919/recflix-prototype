@@ -1,3 +1,15 @@
+"""
+Module: recflix_alpha.test_recommend
+Purpose: Small interactive script to test recommendations locally.
+
+This script builds the dataset and vocab, prints a sample of available
+critics, prompts for a critic name, then prints the top-N movie
+recommendations returned by `recommend_topn`.
+
+It is intended as a lightweight manual test harness, not an automated
+unit test.
+"""
+
 from src.recflix_alpha.recommend import recommend_topn
 from pathlib import Path
 from src.recflix_alpha.dataset import RecFlixAlphaDataset

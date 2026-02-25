@@ -1,3 +1,17 @@
+"""
+Module: recflix_alpha.review_encoder
+Purpose: Convert token sequences to fixed-size review vectors.
+
+`ReviewEncoder` is intentionally simple: it uses an Embedding layer
+followed by mask-aware mean pooling to produce a single vector per
+review. This representation is used by `RecFlixAlphaModel` alongside
+critic and movie embeddings.
+
+Design notes:
+- Embedding + mean pooling is fast and robust for short reviews.
+- The encoder exposes a small, reusable interface: `forward(text)`.
+"""
+
 import torch
 import torch.nn as nn
 
