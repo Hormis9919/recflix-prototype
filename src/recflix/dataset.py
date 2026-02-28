@@ -6,7 +6,6 @@ import re
 import numpy as np
 from pathlib import Path
 
-# NEW: Import the negative sampler
 from src.recflix_alpha.negative_sampler import generate_negative_samples
 
 def parse_score(score):
@@ -49,12 +48,12 @@ class UnifiedRecFlixDataset(Dataset):
                                  imp_df[["user_id", "movie_id", "reviewText", "label", "data_type"]]], 
                                 ignore_index=True)
         else:
-            print(" -> No implicit data found. Proceeding with explicit only.")
+            #print(" -> No implicit data found. Proceeding with explicit only.")
             self.df = exp_df[["user_id", "movie_id", "reviewText", "label", "data_type"]].reset_index(drop=True)
 
-        # --- OPTIMIZED: INJECT NEGATIVE SAMPLES (Ratio 2) ---
+        # --- Inject negative samples (Ratio 3) ---
         all_movies_list = self.df["movie_id"].unique().tolist()
-        self.df = generate_negative_samples(self.df, all_movies_list, num_negatives=2)
+        self.df = generate_negative_samples(self.df, all_movies_list, num_negatives=3)
         # -----------------------------------------
 
         # 3. UNIFIER: Build Global ID Mappings

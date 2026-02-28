@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 import pandas as pd
 
-# RTX 30 Series (Ampere) specific optimizations
+# CUDA specific optimizations
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True # Optimizes convolution/transformer paths
@@ -61,7 +61,7 @@ def train():
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4) 
     
-    epochs = 5 # OPTIMIZED for production run
+    epochs = 5 
     
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, 
@@ -108,9 +108,9 @@ def train():
         "vocab_size": len(vocab.token2idx),
         "embed_dim": embed_dim,
         "pad_idx": pad_idx,
-    }, MODEL_DIR / "recflix_alpha_final.pt")
+    }, MODEL_DIR / "recflix.pt")
     
-    vocab.save(MODEL_DIR / "recflix_alpha_vocab.pt")
+    vocab.save(MODEL_DIR / "recflix_vocab.pt")
     print("Training complete and model saved.")
     
     CACHE_DIR = ROOT / "cache"

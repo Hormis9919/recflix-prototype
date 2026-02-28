@@ -22,7 +22,7 @@ def recommend_topn(critic_name, n=10, dataset=None, favorite_movie_titles=None):
     MODEL_DIR = ROOT / "models"
 
     vocab = Vocabulary(min_freq=5)
-    vocab.load(MODEL_DIR / "recflix_alpha_vocab.pt")
+    vocab.load(MODEL_DIR / "recflix_vocab.pt")
 
     if dataset is None:
         dataset = UnifiedRecFlixDataset(
@@ -36,7 +36,7 @@ def recommend_topn(critic_name, n=10, dataset=None, favorite_movie_titles=None):
     title_to_id = {str(v).lower().strip(): k for k, v in id_to_title.items()}
 
     model = load_recflix_alpha_model(
-        MODEL_DIR / "recflix_alpha_final.pt",
+        MODEL_DIR / "recflix.pt",
         device=device
     )
 

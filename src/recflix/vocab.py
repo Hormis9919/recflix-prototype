@@ -25,7 +25,7 @@ class Vocabulary:
             tokens = self.tokenize(text)
             counter.update(tokens)
             
-        idx = 2 # MOVED HERE: Set the starting index after counting, before assigning
+        idx = 2 
         
         for token, freq in counter.items():
             if freq >= self.min_freq:

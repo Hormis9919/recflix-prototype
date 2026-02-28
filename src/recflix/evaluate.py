@@ -22,7 +22,7 @@ def evaluate():
     MODEL_DIR = ROOT / "models"
 
     vocab = Vocabulary(min_freq=5)
-    vocab.load(MODEL_DIR / "recflix_alpha_vocab.pt")
+    vocab.load(MODEL_DIR / "recflix_vocab.pt")
 
     # 2. Optimized Dataset Loading with Cache Check
     CACHE_PATH = ROOT / "cache/recflix_dataset_cache.pkl"
@@ -51,7 +51,7 @@ def evaluate():
     )
     
     model = load_recflix_alpha_model(
-        MODEL_DIR / "recflix_alpha_final.pt", # OPTIMIZED: Load final run
+        MODEL_DIR / "recflix.pt", # OPTIMIZED: Load final run
         device=device
     )
 

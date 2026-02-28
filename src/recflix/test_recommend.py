@@ -12,7 +12,7 @@ MODEL_DIR = ROOT / "models"
 
 # 1. Load Vocab once
 vocab = Vocabulary(min_freq=5)
-vocab.load(MODEL_DIR / "recflix_alpha_vocab.pt")
+vocab.load(MODEL_DIR / "recflix_vocab.pt")
 
 # 2. Optimized Dataset Loading with Cache Check
 CACHE_PATH = ROOT / "cache/recflix_dataset_cache.pkl"
@@ -29,7 +29,7 @@ else:
         vocab=vocab,
         max_len=50 
     )
-    # Optional: Save it now so next time is fast
+    # Saving the processed dataset for future runs
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     dataset.save(CACHE_PATH)
 
