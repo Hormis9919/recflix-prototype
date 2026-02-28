@@ -1,8 +1,3 @@
-"""
-Module: recflix_alpha.evaluate
-Purpose: GPU-Optimized evaluation utilities for the RecFlix Alpha model.
-"""
-
 import os
 import torch
 import math

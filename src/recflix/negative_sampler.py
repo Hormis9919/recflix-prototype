@@ -1,8 +1,3 @@
-"""
-Module: recflix_alpha.negative_sampler
-Purpose: Generates synthetic negative interactions (label 0.0) for the implicit pipeline.
-"""
-
 import pandas as pd
 import numpy as np
 

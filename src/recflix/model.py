@@ -1,8 +1,3 @@
-"""
-Module: recflix_alpha.model
-Purpose: Neural model definition for RecFlix Alpha.
-"""
-
 import torch
 import torch.nn as nn
 import math

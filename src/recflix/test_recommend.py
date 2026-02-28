@@ -1,7 +1,3 @@
-"""
-Module: recflix_alpha.test_recommend
-Purpose: Fast, optimized test script using a persistent dataset object.
-"""
 import os
 import pickle
 

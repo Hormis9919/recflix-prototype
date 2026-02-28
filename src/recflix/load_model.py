@@ -1,7 +1,3 @@
-"""
-Module: recflix_alpha.load_model
-Purpose: Robust model loader that handles both compiled and standard checkpoints.
-"""
 import torch
 from src.recflix_alpha.model import RecFlixAlphaModel
 

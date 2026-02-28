@@ -1,8 +1,3 @@
-"""
-Module: recflix_alpha.train
-Purpose: GPU-Optimized training entrypoint for the RecFlix Alpha model.
-"""
-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader

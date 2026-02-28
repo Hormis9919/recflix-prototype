@@ -1,8 +1,3 @@
-"""
-Module: recflix_alpha.recommend
-Purpose: Produce top-N movie recommendations using batched inference to prevent OOM.
-"""
-
 import torch
 from pathlib import Path
 import pandas as pd

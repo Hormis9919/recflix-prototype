@@ -1,8 +1,3 @@
-"""
-Module: recflix_alpha.vocab
-Purpose: Simple token vocabulary and text preprocessing utilities.
-"""
-
 import re
 from collections import Counter
 import torch
