@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split, Subset
 from pathlib import Path
 import pandas as pd
 
@@ -8,6 +8,10 @@ import pandas as pd
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True # Optimizes convolution/transformer paths
+
+# OPTIMIZATION: Forced FlashAttention
+torch.backends.cuda.enable_flash_sdp(True)
+torch.backends.cuda.enable_math_sdp(True)
 
 from src.recflix.vocab import Vocabulary
 from src.recflix.dataset import UnifiedRecFlixDataset
@@ -31,17 +35,41 @@ def train():
     dataset = UnifiedRecFlixDataset(
         explicit_path=REVIEWS_PATH, 
         vocab=vocab,
-        max_len=50 # OPTIMIZED
+        max_len=50 
     )
 
-    # Dataloader optimized for GPU transfer
+    # 80/10/10 Data Split
+    print("Splitting Dataset (80% Train, 10% Val, 10% Test)...")
+    total_size = len(dataset)
+    train_size = int(0.8 * total_size)
+    val_size = int(0.1 * total_size)
+    test_size = total_size - train_size - val_size
+
+    # Random split with fixed seed for reproducibility
+    train_subset, val_subset, test_subset = random_split(
+        dataset, [train_size, val_size, test_size],
+        generator=torch.Generator().manual_seed(42) 
+    )
+
+    # Save test indices so evaluate.py can evaluate strictly on unseen data
+    torch.save(test_subset.indices, MODEL_DIR / "test_indices.pt")
+
+    # DataLoaders for Train and Validation
     train_loader = DataLoader(
-        dataset, 
-        batch_size=2048, # OPTIMIZED
+        train_subset, 
+        batch_size=2048, 
         shuffle=True,
         pin_memory=True,  
         num_workers=2,    
         persistent_workers=True 
+    )
+    
+    val_loader = DataLoader(
+        val_subset, 
+        batch_size=2048, 
+        shuffle=False,
+        pin_memory=True,  
+        num_workers=2
     )
 
     embed_dim = 256
@@ -55,13 +83,12 @@ def train():
         pad_idx=pad_idx
     ).to(device)
 
-    # OPTIMIZED: Hardware level graph compiler
     model = torch.compile(model, mode="reduce-overhead")
 
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4) 
     
-    epochs = 5 
+    epochs = 25 
     
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer, 
@@ -75,11 +102,11 @@ def train():
     print("Starting Optimized Training...")
     
     for epoch in range(epochs):
+        # --- Training Phase ---
         model.train()
-        total_loss = 0
+        total_train_loss = 0
         
         for critic_idx, movie_idx, review_tensor, score in train_loader:
-            
             critic_idx = critic_idx.to(device, non_blocking=True)
             movie_idx = movie_idx.to(device, non_blocking=True)
             review_tensor = review_tensor.to(device, non_blocking=True)
@@ -96,10 +123,28 @@ def train():
             scaler.update()
             scheduler.step()
             
-            total_loss += loss.item()
+            total_train_loss += loss.item()
 
-        avg_train_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch+1}/{epochs} | Train Loss: {avg_train_loss:.4f}")
+        avg_train_loss = total_train_loss / len(train_loader)
+        
+        # --- Validation Phase ---
+        model.eval()
+        total_val_loss = 0
+        with torch.inference_mode():
+            for critic_idx, movie_idx, review_tensor, score in val_loader:
+                critic_idx = critic_idx.to(device, non_blocking=True)
+                movie_idx = movie_idx.to(device, non_blocking=True)
+                review_tensor = review_tensor.to(device, non_blocking=True)
+                score = score.to(device, non_blocking=True)
+                
+                with torch.amp.autocast('cuda'):
+                    preds = model(critic_idx, movie_idx, review_tensor)
+                    val_loss = criterion(preds, score)
+                total_val_loss += val_loss.item()
+                
+        avg_val_loss = total_val_loss / len(val_loader)
+
+        print(f"Epoch {epoch+1:02d}/{epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
 
     torch.save({
         "model_state_dict": model.state_dict(),

@@ -2,10 +2,10 @@ import os
 import torch
 import math
 from collections import defaultdict
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from pathlib import Path
 
-# RTX 30 Series (Ampere) specific optimizations for inference
+# Ampere / PyTorch Optimizations
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
@@ -24,34 +24,42 @@ def evaluate():
     vocab = Vocabulary(min_freq=5)
     vocab.load(MODEL_DIR / "recflix_vocab.pt")
 
-    # 2. Optimized Dataset Loading with Cache Check
     CACHE_PATH = ROOT / "cache/recflix_dataset_cache.pkl"
 
     print("Starting fast dataset boot...")
     if CACHE_PATH.exists():
-        # BOOT TIME: ~5 Seconds
         dataset = UnifiedRecFlixDataset.load(CACHE_PATH)
     else:
-        # BOOT TIME: ~15 Minutes (Only runs if cache is missing)
         print("No cache found. Processing CSV (First-time only)...")
         dataset = UnifiedRecFlixDataset(
             explicit_path=REVIEWS_PATH,
             vocab=vocab,
             max_len=50 
         )
-        # Optional: Save it now so next time is fast
         CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         dataset.save(CACHE_PATH)
 
+    # OPTIMIZATION: Load the 10% unseen test indices from training
+    test_indices_path = MODEL_DIR / "test_indices.pt"
+    if test_indices_path.exists():
+        print("Loading 10% Test Split...")
+        # weights_only=False added for safety loading legacy tensors
+        test_indices = torch.load(test_indices_path, weights_only=False) 
+        test_subset = Subset(dataset, test_indices)
+    else:
+        print("[WARNING] Test indices not found. Evaluating on full dataset.")
+        test_subset = dataset
+        test_indices = list(range(len(dataset))) # Fallback
+
     loader = DataLoader(
-        dataset, 
-        batch_size=2048, # OPTIMIZED
+        test_subset, 
+        batch_size=2048,
         pin_memory=True,
         num_workers=2
     )
     
     model = load_recflix_model(
-        MODEL_DIR / "recflix.pt", # OPTIMIZED: Load final run
+        MODEL_DIR / "recflix.pt",
         device=device
     )
 
@@ -61,7 +69,6 @@ def evaluate():
     print("Computing RMSE...")
     model.eval()
     
-    # OPTIMIZED: Strict inference mode
     with torch.inference_mode():
         for critic_idx, movie_idx, review_tensor, score in loader:
             critic_idx = critic_idx.to(device, non_blocking=True)
@@ -69,12 +76,13 @@ def evaluate():
             review_tensor = review_tensor.to(device, non_blocking=True)
             score = score.to(device, non_blocking=True)
 
-            with torch.amp.autocast('cuda'):
+            # OPTIMIZATION: device.type enables seamless fallback to your Ryzen CPU
+            with torch.amp.autocast(device.type):
                 logits = model(critic_idx, movie_idx, review_tensor)
-                preds = torch.sigmoid(logits) # Apply sigmoid manually for display/metrics
+                preds = torch.sigmoid(logits) 
             
             preds = preds.float() * 5.0
-            sccore = score.float() * 5.0
+            score = score.float() * 5.0
             
             total_mse += torch.sum((preds - score) ** 2).item()
             total_samples += len(score)
@@ -83,28 +91,37 @@ def evaluate():
 
     print("Computing Ranking Metrics (HR@10, NDCG@10)...")
     k = 10
+    
+    # OPTIMIZATION: Bypassing __getitem__ completely for ranking
     critic_groups = defaultdict(list)
+    
+    print("Grouping unseen evaluation data...")
+    # Extract native tensors strictly aligned with the test indices
+    c_indices = dataset.critic_indices[test_indices].tolist()
+    m_indices = dataset.movie_indices[test_indices]
+    r_tensors = dataset.review_tensors[test_indices]
+    true_scores = dataset.labels[test_indices]
 
-    for i in range(len(dataset)):
-        critic_idx, movie_idx, review_tensor, score = dataset[i]
-        critic_groups[int(critic_idx)].append((movie_idx, review_tensor, score))
+    # Zipped iteration creates zero class-method overhead
+    for i, critic in enumerate(c_indices):
+        critic_groups[critic].append((m_indices[i], r_tensors[i], true_scores[i]))
 
     hit_count = 0
     ndcg_total = 0
     critic_count = 0
 
-    # OPTIMIZED: Strict inference mode
     with torch.inference_mode():
         for critic, items in critic_groups.items():
             if len(items) < k:
                 continue
 
-            critic_tensor = torch.tensor([critic] * len(items)).to(device)
+            # OPTIMIZATION: Direct GPU memory allocation, bypassing Python lists
+            critic_tensor = torch.full((len(items),), critic, dtype=torch.long, device=device)
             movie_tensor = torch.stack([x[0] for x in items]).to(device)
             review_tensor = torch.stack([x[1] for x in items]).to(device)
             true_scores = torch.tensor([x[2] for x in items])
 
-            with torch.amp.autocast('cuda'):
+            with torch.amp.autocast(device.type):
                 preds = model(critic_tensor, movie_tensor, review_tensor)
             
             preds = preds.cpu().float()

@@ -50,23 +50,23 @@ def recommend_topn(critic_name, n=10, dataset=None, favorite_movie_titles=None):
     else:
         critic_idx = dataset.critic2idx[critic_name]
 
-    # Pre-calculate movie proxy texts
+    # OPTIMIZATION: Bypass __getitem__ to build proxy text map instantly
     movie_review_map = {}
-    for i in range(len(dataset)):
-        _, m_idx, review_tensor, _ = dataset[i]
-        m_idx_val = int(m_idx)
+    m_indices_list = dataset.movie_indices.tolist()
+    r_tensors = dataset.review_tensors
+    
+    for m_idx_val, r_tensor in zip(m_indices_list, r_tensors):
         if m_idx_val not in movie_review_map:
-            movie_review_map[m_idx_val] = review_tensor
+            movie_review_map[m_idx_val] = r_tensor
 
     review_tensor_batch = torch.stack([movie_review_map[m] for m in movie_indices]).to(device)
 
     model.eval()
     all_preds = []
-    # OPTIMIZATION: Small batch size to keep Transformer attention fast and lean
     batch_size = 512 
 
     with torch.inference_mode():
-        with torch.amp.autocast('cuda'):
+        with torch.amp.autocast(device.type):
             # Cold-start user profile generation
             if is_new_user:
                 mean_user_emb = model.critic_embedding.weight.mean(dim=0, keepdim=True)
@@ -96,7 +96,8 @@ def recommend_topn(critic_name, n=10, dataset=None, favorite_movie_titles=None):
                     
                     logits = model.deep_fm(unified_vec).squeeze(1)
                 else:
-                    b_critic_tensor = torch.tensor([critic_idx] * curr_batch_len).to(device)
+                    # OPTIMIZATION: Direct GPU memory allocation for the user tensor
+                    b_critic_tensor = torch.full((curr_batch_len,), critic_idx, dtype=torch.long, device=device)
                     logits = model(b_critic_tensor, b_movie_tensor, b_review_tensor)
                 
                 all_preds.append(torch.sigmoid(logits))

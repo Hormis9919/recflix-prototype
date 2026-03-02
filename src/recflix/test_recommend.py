@@ -1,5 +1,9 @@
 import os
 import pickle
+import warnings
+
+# Suppress PyTorch weight loading warnings for a clean presentation terminal
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 from src.recflix.recommend import recommend_topn
 from pathlib import Path
@@ -22,7 +26,7 @@ if CACHE_PATH.exists():
     # BOOT TIME: ~5 Seconds
     dataset = UnifiedRecFlixDataset.load(CACHE_PATH)
 else:
-    # BOOT TIME: ~15 Minutes (Only runs if cache is missing)
+    # BOOT TIME: ~1-2 Minutes (Optimized Vectorized Run)
     print("No cache found. Processing CSV (First-time only)...")
     dataset = UnifiedRecFlixDataset(
         explicit_path=REVIEWS_PATH,
