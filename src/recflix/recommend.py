@@ -2,9 +2,9 @@ import torch
 from pathlib import Path
 import pandas as pd
 
-from src.recflix_alpha.dataset import UnifiedRecFlixDataset
-from src.recflix_alpha.vocab import Vocabulary
-from src.recflix_alpha.load_model import load_recflix_alpha_model
+from src.recflix.dataset import UnifiedRecFlixDataset
+from src.recflix.vocab import Vocabulary
+from src.recflix.load_model import load_recflix_model
 
 # Enable TF32 for inference
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -35,7 +35,7 @@ def recommend_topn(critic_name, n=10, dataset=None, favorite_movie_titles=None):
     id_to_title = dict(zip(movies_df["id"], movies_df["title"]))
     title_to_id = {str(v).lower().strip(): k for k, v in id_to_title.items()}
 
-    model = load_recflix_alpha_model(
+    model = load_recflix_model(
         MODEL_DIR / "recflix.pt",
         device=device
     )

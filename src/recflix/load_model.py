@@ -1,7 +1,7 @@
 import torch
-from src.recflix_alpha.model import RecFlixAlphaModel
+from src.recflix.model import RecFlixAlphaModel
 
-def load_recflix_alpha_model(model_path, device="cpu"):
+def load_recflix_model(model_path, device="cpu"):
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     model = RecFlixAlphaModel(

@@ -6,7 +6,7 @@ import re
 import numpy as np
 from pathlib import Path
 
-from src.recflix_alpha.negative_sampler import generate_negative_samples
+from src.recflix.negative_sampler import generate_negative_samples
 
 def parse_score(score):
     if not isinstance(score, str):
@@ -20,7 +20,7 @@ def parse_score(score):
     return None
 
 class UnifiedRecFlixDataset(Dataset):
-    def __init__(self, explicit_path, vocab, implicit_path=None, max_len=50): # OPTIMIZED
+    def __init__(self, explicit_path, vocab, implicit_path=None, max_len=50): 
         print("Module 1: Initializing Database Pipeline...")
         self.max_len = max_len
         self.pad_idx = vocab.token2idx[vocab.PAD_TOKEN]
@@ -48,7 +48,6 @@ class UnifiedRecFlixDataset(Dataset):
                                  imp_df[["user_id", "movie_id", "reviewText", "label", "data_type"]]], 
                                 ignore_index=True)
         else:
-            #print(" -> No implicit data found. Proceeding with explicit only.")
             self.df = exp_df[["user_id", "movie_id", "reviewText", "label", "data_type"]].reset_index(drop=True)
 
         # --- Inject negative samples (Ratio 3) ---
@@ -61,29 +60,38 @@ class UnifiedRecFlixDataset(Dataset):
         self.critic2idx = {critic: idx for idx, critic in enumerate(self.df["user_id"].unique())}
         self.movie2idx = {movie: idx for idx, movie in enumerate(self.df["movie_id"].unique())}
 
-        # 4. Text Processing Pipeline
-        print(" -> Processing Text Branch...")
-        encoded_texts = []
-        self.movie_to_proxy_text = {} 
+        # 4. Text Processing Pipeline (CPU OPTIMIZED)
+        print(" -> Processing Text Branch (Vectorized)...")
+        
+        # Helper function for fast tokenization and padding
+        def encode_and_pad(text):
+            tokens = vocab.encode(str(text))[:self.max_len]
+            return tokens + [self.pad_idx] * (self.max_len - len(tokens))
 
-        for idx, row in self.df.iterrows():
-            if row["data_type"] == "explicit":
-                tokens = vocab.encode(row["reviewText"])[:max_len]
-                if len(tokens) < max_len:
-                    tokens += [self.pad_idx] * (max_len - len(tokens))
-                
-                m_idx = self.movie2idx[row["movie_id"]]
-                if m_idx not in self.movie_to_proxy_text:
-                    self.movie_to_proxy_text[m_idx] = tokens
-            else:
-                tokens = [] 
-            encoded_texts.append(tokens)
+        # Create a boolean mask to isolate explicit data
+        explicit_mask = self.df["data_type"] == "explicit"
+        
+        # Apply tokenization ONLY to explicit rows using vectorized .apply()
+        explicit_encoded = self.df.loc[explicit_mask, "reviewText"].apply(encode_and_pad)
+        
+        # Map the encoded tokens back to a temporary column
+        self.df["encoded_tokens"] = None
+        self.df.loc[explicit_mask, "encoded_tokens"] = explicit_encoded
+        
+        # 5. Fast Proxy Text Resolution
+        # Drop duplicates to grab the first available review for each movie, then convert to a dictionary map
+        proxy_map = self.df[explicit_mask].drop_duplicates(subset=["movie_id"]).set_index("movie_id")["encoded_tokens"].to_dict()
+        default_pad = [self.pad_idx] * self.max_len
 
-        # 5. Resolve Implicit Text Defaults
-        for i, row in self.df.iterrows():
-            if row["data_type"] in ["implicit", "implicit_negative"]:
-                m_idx = self.movie2idx[row["movie_id"]]
-                encoded_texts[i] = self.movie_to_proxy_text.get(m_idx, [self.pad_idx] * max_len)
+        # Fill in the missing tokens for implicit/negative rows
+        # A list comprehension over zipped columns is significantly faster than iterrows or apply(axis=1)
+        encoded_texts = [
+            tokens if d_type == "explicit" else proxy_map.get(m_id, default_pad)
+            for tokens, d_type, m_id in zip(self.df["encoded_tokens"], self.df["data_type"], self.df["movie_id"])
+        ]
+
+        # Clean up temporary DataFrame memory
+        self.df = self.df.drop(columns=["encoded_tokens"])
 
         # Finalize Tensors
         self.review_tensors = torch.tensor(encoded_texts, dtype=torch.long)
@@ -103,6 +111,7 @@ class UnifiedRecFlixDataset(Dataset):
             self.review_tensors[idx], 
             self.labels[idx]
         )
+        
     def save(self, path):
         """Serializes the fully processed dataset to your Drive."""
         print(f" -> Saving processed dataset cache to {path}...")

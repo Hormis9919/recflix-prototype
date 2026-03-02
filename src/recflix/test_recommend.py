@@ -1,10 +1,10 @@
 import os
 import pickle
 
-from src.recflix_alpha.recommend import recommend_topn
+from src.recflix.recommend import recommend_topn
 from pathlib import Path
-from src.recflix_alpha.dataset import UnifiedRecFlixDataset
-from src.recflix_alpha.vocab import Vocabulary
+from src.recflix.dataset import UnifiedRecFlixDataset
+from src.recflix.vocab import Vocabulary
 
 ROOT = Path(__file__).resolve().parents[2]
 REVIEWS_PATH = ROOT / "datasets/datasets/rotten_tomatoes/rotten_tomatoes_movie_reviews.csv"

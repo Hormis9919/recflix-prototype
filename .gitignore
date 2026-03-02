@@ -24,7 +24,7 @@ Thumbs.db
 
 
 #testing programs
-src/recflix_alpha/test_vocab.py
-src/recflix_alpha/test_dataset.py
-src/recflix_alpha/test_review_encoder.py
-src/recflix_alpha/test_model.py
+src/recflix/test_vocab.py
+src/recflix/test_dataset.py
+src/recflix/test_review_encoder.py
+src/recflix/test_model.py

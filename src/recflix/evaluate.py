@@ -9,9 +9,9 @@ from pathlib import Path
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-from src.recflix_alpha.dataset import UnifiedRecFlixDataset
-from src.recflix_alpha.vocab import Vocabulary
-from src.recflix_alpha.load_model import load_recflix_alpha_model
+from src.recflix.dataset import UnifiedRecFlixDataset
+from src.recflix.vocab import Vocabulary
+from src.recflix.load_model import load_recflix_model
 
 def evaluate():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -50,7 +50,7 @@ def evaluate():
         num_workers=2
     )
     
-    model = load_recflix_alpha_model(
+    model = load_recflix_model(
         MODEL_DIR / "recflix.pt", # OPTIMIZED: Load final run
         device=device
     )

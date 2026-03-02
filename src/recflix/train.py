@@ -9,9 +9,9 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.benchmark = True # Optimizes convolution/transformer paths
 
-from src.recflix_alpha.vocab import Vocabulary
-from src.recflix_alpha.dataset import UnifiedRecFlixDataset
-from src.recflix_alpha.model import RecFlixAlphaModel
+from src.recflix.vocab import Vocabulary
+from src.recflix.dataset import UnifiedRecFlixDataset
+from src.recflix.model import RecFlixAlphaModel
 
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
