@@ -1,105 +1,165 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from pathlib import Path
 import os
 import pandas as pd
 
-from src.hybrid_model.hybrid_model import HybridRecommender
+from src.hybrid_model.hybrid_model      import HybridRecommender
 from src.hybrid_model.movietext_dataset import MovieTextDataset
-from src.hybrid_model.vocab import Vocabulary
+from src.hybrid_model.vocab             import Vocabulary
 
-def build_vocab_from_reviews(data_dir: Path):
-    reviews_path = data_dir / "rotten_tomatoes_movie_reviews.csv"
-    df = pd.read_csv(reviews_path).dropna(subset=["reviewText"])
-    
-    tokenized = [str(text).split() for text in df["reviewText"]]
+
+def build_vocab_from_reviews(data_dir: Path) -> Vocabulary:
+    df = pd.read_csv(
+        data_dir / "rotten_tomatoes_movie_reviews.csv"
+    ).dropna(subset=["reviewText"])
+    tokenized = [str(t).split() for t in df["reviewText"]]
     vocab = Vocabulary(min_freq=2)
     vocab.build(tokenized)
     return vocab
 
-def train():
-    # OPTIMIZATION: Enable cuDNN benchmark for faster dynamic graph execution
-    torch.backends.cudnn.benchmark = True
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device} (Optimized for T4)")
-    
-    DATA_DIR = Path("datasets/datasets/rotten_tomatoes") 
 
+def train():
+    torch.backends.cudnn.benchmark = True
+    device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    use_amp = device.type == "cuda"
+    print(f"Using device: {device}  |  AMP: {use_amp}")
+
+    DATA_DIR  = Path("datasets/datasets/rotten_tomatoes")
+    MODEL_DIR = Path("models")
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # Vocabulary
+    # ------------------------------------------------------------------
     print("Building vocabulary...")
     vocab = build_vocab_from_reviews(DATA_DIR)
 
+    # ------------------------------------------------------------------
+    # Dataset + 80 / 10 / 10 split
+    # ------------------------------------------------------------------
     print("Loading dataset...")
-    dataset = MovieTextDataset(DATA_DIR, vocab, max_len=100)
-    
-    # OPTIMIZATION: pin_memory and num_workers prevent GPU starvation
-    dataloader = DataLoader(
-        dataset, 
-        batch_size=512, # Increased batch size to saturate T4 VRAM
-        shuffle=True,
-        num_workers=2,
-        pin_memory=True,
-        prefetch_factor=2
+    full_dataset = MovieTextDataset(DATA_DIR, vocab, max_len=100)
+    n            = len(full_dataset)
+
+    n_train = int(n * 0.80)
+    n_val   = int(n * 0.10)
+    n_test  = n - n_train - n_val   # absorbs any rounding remainder
+
+    print(f"Total: {n:,}  ->  "
+          f"Train: {n_train:,} | Val: {n_val:,} | Test: {n_test:,}")
+
+    # seed=42 makes the split reproducible across every run
+    generator = torch.Generator().manual_seed(42)
+    train_set, val_set, test_set = random_split(
+        full_dataset, [n_train, n_val, n_test], generator=generator
     )
 
+    # Persist all three index lists so evaluate.py uses the exact same split
+    torch.save(torch.tensor(train_set.indices), MODEL_DIR / "train_indices.pt")
+    torch.save(torch.tensor(val_set.indices),   MODEL_DIR / "val_indices.pt")
+    torch.save(torch.tensor(test_set.indices),  MODEL_DIR / "test_indices_hybrid.pt")
+    print("Split indices saved to models/")
+
+    # ------------------------------------------------------------------
+    # DataLoaders
+    # ------------------------------------------------------------------
+    loader_kw = dict(
+        num_workers     = 2,
+        pin_memory      = use_amp,
+        prefetch_factor = 2 if use_amp else None,
+    )
+    train_loader = DataLoader(train_set, batch_size=512,
+                              shuffle=True,  **loader_kw)
+    val_loader   = DataLoader(val_set,   batch_size=1024,
+                              shuffle=False, **loader_kw)
+
+    # ------------------------------------------------------------------
+    # Model
+    # ------------------------------------------------------------------
     model = HybridRecommender(
-        num_users=len(dataset.critic2idx),
-        num_movies=len(dataset.movie2idx),
-        vocab_size=len(vocab),
-        embed_dim=64,
-        pad_idx=vocab.token2idx[vocab.PAD_TOKEN],
+        num_users  = len(full_dataset.critic2idx),
+        num_movies = len(full_dataset.movie2idx),
+        vocab_size = len(vocab),
+        embed_dim  = 64,
+        pad_idx    = vocab.token2idx[vocab.PAD_TOKEN],
     ).to(device)
-    
+
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
+    scaler    = torch.amp.GradScaler("cuda") if use_amp else None
 
-    # OPTIMIZATION: Initialize Gradient Scaler for Mixed Precision
-    scaler = torch.amp.GradScaler('cuda')
-
-    print("Training hybrid model...")
+    # ------------------------------------------------------------------
+    # Training loop — 5 epochs, validate after each
+    # ------------------------------------------------------------------
+    print("Training hybrid model (5 epochs)...")
     for epoch in range(5):
-        model.train()
-        total_loss = 0
-        
-        for critic_idx, movie_idx, review_tensor, score in dataloader:
-            # OPTIMIZATION: non_blocking=True allows async transfers
-            critic_idx = critic_idx.to(device, non_blocking=True)
-            movie_idx = movie_idx.to(device, non_blocking=True)
-            review_tensor = review_tensor.to(device, non_blocking=True)
-            score = score.to(device, non_blocking=True)
 
-            # OPTIMIZATION: set_to_none=True is faster and uses less memory
+        # ---- train ---------------------------------------------------
+        model.train()
+        train_loss = 0.0
+
+        for ci, mi, rt, sc in train_loader:
+            ci = ci.to(device, non_blocking=use_amp)
+            mi = mi.to(device, non_blocking=use_amp)
+            rt = rt.to(device, non_blocking=use_amp)
+            sc = sc.to(device, non_blocking=use_amp)
+
             optimizer.zero_grad(set_to_none=True)
 
-            # OPTIMIZATION: AMP Autocast Context
-            with torch.autocast(device_type='cuda', dtype=torch.float16):
-                preds = model(critic_idx, movie_idx, review_tensor)
-                loss = criterion(preds, score)
+            if use_amp:
+                with torch.autocast(device_type="cuda", dtype=torch.float16):
+                    preds = model(ci, mi, rt)
+                    loss  = criterion(preds, sc)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                preds = model(ci, mi, rt)
+                loss  = criterion(preds, sc)
+                loss.backward()
+                optimizer.step()
 
-            # Scale gradients and step
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            train_loss += loss.item()
 
-            total_loss += loss.item()
-            
-        print(f"Epoch {epoch+1} | Loss: {total_loss / len(dataloader):.4f}")
-        
-    print("Hybrid training complete.")
-    
-    os.makedirs("models", exist_ok=True)
+        # ---- validate ------------------------------------------------
+        model.eval()
+        val_loss = 0.0
+
+        with torch.inference_mode():
+            for ci, mi, rt, sc in val_loader:
+                ci = ci.to(device, non_blocking=True)
+                mi = mi.to(device, non_blocking=True)
+                rt = rt.to(device, non_blocking=True)
+                sc = sc.to(device, non_blocking=True)
+                if use_amp:
+                    with torch.amp.autocast(device.type):
+                        preds = model(ci, mi, rt)
+                else:
+                    preds = model(ci, mi, rt)
+                val_loss += criterion(preds, sc).item()
+
+        print(f"Epoch {epoch+1:>2}/5  |  "
+              f"Train Loss: {train_loss / len(train_loader):.4f}  |  "
+              f"Val Loss:   {val_loss   / len(val_loader):.4f}")
+
+    # ------------------------------------------------------------------
+    # Save checkpoint
+    # ------------------------------------------------------------------
+    print("Saving model...")
     torch.save({
         "model_state_dict": model.state_dict(),
-        "num_users": len(dataset.critic2idx),
-        "num_movies": len(dataset.movie2idx),
+        "num_users":  len(full_dataset.critic2idx),
+        "num_movies": len(full_dataset.movie2idx),
         "vocab_size": len(vocab),
-        "embed_dim": 64,
-        "pad_idx": vocab.token2idx[vocab.PAD_TOKEN]
-    }, "models/hybrid_model.pt")
-    
-    vocab.save("models/hybrid_vocab.pt")
-    print("Hybrid model saved.")
+        "embed_dim":  64,
+        "pad_idx":    vocab.token2idx[vocab.PAD_TOKEN],
+    }, MODEL_DIR / "hybrid_model.pt")
+
+    vocab.save(MODEL_DIR / "hybrid_vocab.pt")
+    print("Done. Model and split indices saved to models/")
+
 
 if __name__ == "__main__":
     train()
