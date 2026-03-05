@@ -6,7 +6,7 @@ import os
 import pandas as pd
 
 from src.hybrid_model.hybrid_model      import HybridRecommender
-from src.hybrid_model.movietext_dataset import MovieTextDataset
+from src.hybrid_model.movietext_dataset import MovieTextDataset, build_static_movie_texts
 from src.hybrid_model.vocab             import Vocabulary
 
 
@@ -62,6 +62,9 @@ def train():
     torch.save(torch.tensor(test_set.indices),  MODEL_DIR / "test_indices_hybrid.pt")
     print("Split indices saved to models/")
 
+    print("Building static movie texts for negative sampling...")
+    static_texts = build_static_movie_texts(full_dataset, device=device)
+
     # ------------------------------------------------------------------
     # DataLoaders
     # ------------------------------------------------------------------
@@ -106,18 +109,36 @@ def train():
             rt = rt.to(device, non_blocking=use_amp)
             sc = sc.to(device, non_blocking=use_amp)
 
+            # --- 1:3 Negative Sampling ---
+            NUM_NEGATIVES = 3
+            batch_size = ci.size(0)
+            
+            # Generate 3x the number of negative movies
+            neg_mi = torch.randint(0, len(full_dataset.movie2idx), (batch_size * NUM_NEGATIVES,), device=device)
+            neg_rt = static_texts[neg_mi]
+            neg_sc = torch.zeros(batch_size * NUM_NEGATIVES, dtype=sc.dtype, device=device)
+            
+            # Repeat the critic indices 3 times so they match the negative movies
+            ci_neg = ci.repeat(NUM_NEGATIVES)
+            
+            # Combine 1 part positive + 3 parts negative
+            ci_all = torch.cat([ci, ci_neg], dim=0)
+            mi_all = torch.cat([mi, neg_mi], dim=0)
+            rt_all = torch.cat([rt, neg_rt], dim=0)
+            sc_all = torch.cat([sc, neg_sc], dim=0)
+
             optimizer.zero_grad(set_to_none=True)
 
             if use_amp:
                 with torch.autocast(device_type="cuda", dtype=torch.float16):
-                    preds = model(ci, mi, rt)
-                    loss  = criterion(preds, sc)
+                    preds = model(ci_all, mi_all, rt_all)
+                    loss  = criterion(preds, sc_all)
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                preds = model(ci, mi, rt)
-                loss  = criterion(preds, sc)
+                preds = model(ci_all, mi_all, rt_all)
+                loss  = criterion(preds, sc_all)
                 loss.backward()
                 optimizer.step()
 
@@ -133,12 +154,24 @@ def train():
                 mi = mi.to(device, non_blocking=True)
                 rt = rt.to(device, non_blocking=True)
                 sc = sc.to(device, non_blocking=True)
+
+                # Validation with negative sampling
+                batch_size = ci.size(0)
+                neg_mi = torch.randint(0, len(full_dataset.movie2idx), (batch_size,), device=device)
+                neg_rt = static_texts[neg_mi]
+                neg_sc = torch.zeros(batch_size, dtype=sc.dtype, device=device)
+                
+                ci_all = torch.cat([ci, ci], dim=0)
+                mi_all = torch.cat([mi, neg_mi], dim=0)
+                rt_all = torch.cat([rt, neg_rt], dim=0)
+                sc_all = torch.cat([sc, neg_sc], dim=0)
+                
                 if use_amp:
                     with torch.amp.autocast(device.type):
-                        preds = model(ci, mi, rt)
+                        preds = model(ci_all, mi_all, rt_all)
                 else:
-                    preds = model(ci, mi, rt)
-                val_loss += criterion(preds, sc).item()
+                    preds = model(ci_all, mi_all, rt_all)
+                val_loss += criterion(preds, sc_all).item()
 
         print(f"Epoch {epoch+1:>2}/5  |  "
               f"Train Loss: {train_loss / len(train_loader):.4f}  |  "

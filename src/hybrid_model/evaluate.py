@@ -8,12 +8,15 @@ from pathlib import Path
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+# Ensure build_static_movie_texts is imported
 from src.hybrid_model.movietext_dataset import MovieTextDataset, build_static_movie_texts
 from src.hybrid_model.vocab             import Vocabulary
 from src.hybrid_model.load_model        import load_hybrid_model
 
 
 def _load_indices(path: Path) -> list:
+    if not path.exists():
+        return []
     raw = torch.load(path, weights_only=False)
     return raw.tolist() if isinstance(raw, torch.Tensor) else list(raw)
 
@@ -95,7 +98,7 @@ def evaluate():
     )
 
     # ------------------------------------------------------------------
-    # 1. Rating metrics (Calculates RMSE and MAE)
+    # 1. Rating metrics (Regression over actual test set)
     # ------------------------------------------------------------------
     t_mse = top_mse = reg_mse = t_mae = 0.0
     t_n   = top_n   = reg_n   = 0
@@ -165,7 +168,7 @@ def evaluate():
     novelty = top_ndcg = reg_ndcg = 0.0
     eval_count = tu = ru = 0
     
-    # We need the static texts for the 99 negative movies that don't have reviews
+    # Retrieve static text representations for the 99 negative items
     static_movie_text_tensor = build_static_movie_texts(dataset, device=device)
 
     with torch.inference_mode():
@@ -178,16 +181,15 @@ def evaluate():
                     continue  # Only evaluate ranking on movies they actually liked
 
                 # Sample 99 negatives
+                # Sample 99 negatives
                 negatives = random.sample(unseen, min(NUM_NEGATIVES, len(unseen)))
                 candidates = [pos_movie_idx] + negatives
-                
+
                 ct_tensor = torch.full((len(candidates),), critic, dtype=torch.long, device=device)
                 mt_tensor = torch.tensor(candidates, dtype=torch.long, device=device)
 
-                # Use actual review for the positive item, static text for negatives
-                pos_text = rvt.unsqueeze(0).to(device)
-                neg_text = static_movie_text_tensor[negatives]
-                text_tensor = torch.cat([pos_text, neg_text], dim=0)
+                # FIX: Use 'mt_tensor' (which contains all 100 movies) to pull the text!
+                text_tensor = static_movie_text_tensor[mt_tensor]
 
                 if use_amp:
                     with torch.amp.autocast(device.type):
@@ -195,11 +197,11 @@ def evaluate():
                 else:
                     preds = model(ct_tensor, mt_tensor, text_tensor).squeeze()
 
-                # Get Top K
+                # Get Top K (For HR, MRR, NDCG@10, MAP, F1)
                 _, topk_indices = torch.topk(preds, min(k, len(candidates)))
                 topk_indices = topk_indices.cpu().tolist()
                 
-                # Get Full Ranking (For AUC calculation)
+                # Get Full Ranking (For rigorous AUC calculation)
                 full_sorted_indices = torch.argsort(preds, descending=True).cpu().tolist()
                 
                 # Track Novelty and Coverage
@@ -215,13 +217,13 @@ def evaluate():
                 hit = 1.0 if rank != -1 else 0.0
                 acc["hit"] += hit
                 acc["prec"] += hit / k
-                acc["rec"] += hit # It's 1 or 0 since there is only 1 positive item in the pool
+                acc["rec"] += hit 
                 
                 if hit:
                     acc["f1"] += (2 * (1/k) * 1) / ((1/k) + 1)
                     mrr_val = 1.0 / (rank + 1)
                     acc["mrr"] += mrr_val
-                    acc["map"] += mrr_val # MAP is identical to MRR in a 1-vs-N setup
+                    acc["map"] += mrr_val # MAP is equivalent to MRR for 1 positive
                     ndcg_val = 1.0 / math.log2(rank + 2)
                     acc["ndcg"] += ndcg_val
                     
@@ -230,7 +232,7 @@ def evaluate():
                     else:
                         reg_ndcg += ndcg_val
                 
-                # Increment denominators regardless of hit/miss
+                # ALWAYS increment the subgroup denominators, hit or miss
                 if is_top:
                     tu += 1
                 else:
@@ -272,6 +274,7 @@ def evaluate():
     print(f"Novelty Score:      "
           f"{novelty / eval_count if eval_count > 0 else 0:.4f} (1.0 = Highly Novel)")
     print("=" * 55)
+
 
 if __name__ == "__main__":
     evaluate()
